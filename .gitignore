@@ -69,3 +69,7 @@ fabric.properties
 hs_err_pid*
 .idea/inspectionProfiles/
 /output/
+**/.idea/**
+**/*.iml
+.idea/**
+/algs4.jar
