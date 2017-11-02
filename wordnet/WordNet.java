@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Queue;
 import java.util.Stack;
-import java.util.stream.IntStream;
 
 public class WordNet {
 
@@ -45,9 +44,15 @@ public class WordNet {
         while (hypernymFile.hasNextLine()) {
             String line = hypernymFile.readLine();
             String[] sidStr = line.split(",");
-            IntStream sids = Arrays.stream(sidStr).mapToInt(Integer::parseInt);
-            int sid = sids.findFirst().getAsInt();
-            sids.skip(1).forEach(hypernym -> digraph.addEdge(sid, hypernym));
+            int length = sidStr.length;
+            int[] sids = new int[length];
+            for (int i = 0; i < length; i++) {
+                sids[i] = Integer.parseInt(sidStr[i]);
+            }
+            int sid = sids[0];
+            for (int i = 1; i < length; i++) {
+                digraph.addEdge(sid, sids[i]);
+            }
         }
         if (!isRootedDAG(digraph)) {
             this.digraph = null;

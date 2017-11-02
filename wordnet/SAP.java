@@ -31,7 +31,11 @@ public class SAP {
 
     // length of shortest ancestral path between v and w; -1 if no such path
     public int length(int v, int w) {
-        return -1;
+        int[] sap = sap(Collections.singletonList(v), Collections.singletonList(w));
+        if (sap[0] == -1) {
+            return -1;
+        }
+        return sap[1];
     }
 
     private int[] sap(Iterable<Integer> v, Iterable<Integer> w) {
