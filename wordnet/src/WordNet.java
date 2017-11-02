@@ -1,22 +1,42 @@
 import edu.princeton.cs.algs4.BreadthFirstDirectedPaths;
 import edu.princeton.cs.algs4.Digraph;
+import edu.princeton.cs.algs4.DirectedCycleX;
 import edu.princeton.cs.algs4.In;
 import edu.princeton.cs.algs4.StdIn;
 import edu.princeton.cs.algs4.StdOut;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Queue;
-import java.util.Stack;
 
 public class WordNet {
 
     private HashMap<String, List<Integer>> wordMap = new HashMap<>();
     private List<String> synsets = new ArrayList<>();
     private Digraph digraph = null;
+
+    private static boolean isRootedDAG(Digraph digraph) {
+        if (null == digraph || digraph.V() < 1) {
+            return false;
+        }
+        DirectedCycleX cycleX = new DirectedCycleX(digraph);
+        if (cycleX.hasCycle()) {
+            return false;
+        }
+        int numNode = digraph.V();
+        int numRoot = 0;
+        for (int v = 0; v < numNode; v++) {
+            if (digraph.outdegree(v) == 0) {
+                numRoot++;
+            }
+        }
+        if (numRoot > 1) {
+            return false;
+        }
+        return true;
+    }
 
     // constructor takes the name of the two input files
     public WordNet(String synsets, String hypernyms) {
@@ -56,56 +76,8 @@ public class WordNet {
             }
         }
         if (!isRootedDAG(digraph)) {
-            this.digraph = null;
             throw new IllegalArgumentException();
         }
-    }
-
-    private static boolean isRootedDAG(Digraph digraph) {
-        final int numNode = digraph.V();
-        if (numNode < 1)
-            return false;
-        boolean[] marked = new boolean[numNode];
-        int[] roots = new int[numNode];
-        int root = -1;
-        Arrays.fill(roots, -1);
-        for (int v = 0; v < numNode; v++) {
-            if (!marked[v]) {
-                Stack<Integer> s = new Stack<>();
-                s.push(v);
-                while (!s.isEmpty()) {
-                    Integer node = s.peek();
-                    Iterable<Integer> adjs = digraph.adj(node);
-                    boolean allMarked = true;
-                    if (adjs != null) {
-                        for (Integer adj : adjs) {
-                            if (!marked[adj]) {
-                                allMarked = false;
-                                marked[adj] = true;
-                                s.push(adj);
-                            } else {
-                                if (roots[adj] == -1) {
-                                    return false; // There is cycle in the graph
-                                }
-                                if (roots[adj] != root) {
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    if (allMarked) {
-                        if (root == -1) {
-                            roots[node] = node;
-                            root = node;
-                        } else {
-                            roots[node] = root;
-                        }
-                        s.pop();
-                    }
-                }
-            }
-        }
-        return true;
     }
 
     // do unit testing of this class
@@ -126,6 +98,9 @@ public class WordNet {
 
     // is the word a WordNet noun?
     public boolean isNoun(String word) {
+        if (null == word) {
+            throw new IllegalArgumentException();
+        }
         return wordMap.containsKey(word);
     }
 
