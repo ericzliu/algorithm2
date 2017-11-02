@@ -1,6 +1,8 @@
 import edu.princeton.cs.algs4.BreadthFirstDirectedPaths;
 import edu.princeton.cs.algs4.Digraph;
 import edu.princeton.cs.algs4.In;
+import edu.princeton.cs.algs4.StdIn;
+import edu.princeton.cs.algs4.StdOut;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -12,7 +14,7 @@ import java.util.Stack;
 
 public class WordNet {
 
-    private HashMap<String, List<Integer>> wordSet = new HashMap<>();
+    private HashMap<String, List<Integer>> wordMap = new HashMap<>();
     private List<String> synsets = new ArrayList<>();
     private Digraph digraph = null;
 
@@ -30,13 +32,12 @@ public class WordNet {
             int sid = Integer.parseInt(fields[0]);
             String wordsField = fields[1];
             String[] words = wordsField.split(" ");
-            for (String word :
-                    words) {
-                List<Integer> sids = wordSet.getOrDefault(word, new ArrayList<>());
+            for (String word : words) {
+                List<Integer> sids = wordMap.getOrDefault(word, new ArrayList<>());
                 sids.add(sid);
-                wordSet.put(word, sids);
-                this.synsets.add(wordsField);
+                wordMap.put(word, sids);
             }
+            this.synsets.add(wordsField);
         }
 
         digraph = new Digraph(nodeNum);
@@ -109,17 +110,23 @@ public class WordNet {
 
     // do unit testing of this class
     public static void main(String[] args) {
-
+        WordNet wordnet = new WordNet(args[0], args[1]);
+        while (!StdIn.isEmpty()) {
+            String v = StdIn.readString();
+            String w = StdIn.readString();
+            String ancestor = wordnet.sap(v, w);
+            StdOut.printf("ancestor = %s\n", ancestor);
+        }
     }
 
     // returns all WordNet nouns
     public Iterable<String> nouns() {
-        return wordSet.keySet();
+        return wordMap.keySet();
     }
 
     // is the word a WordNet noun?
     public boolean isNoun(String word) {
-        return wordSet.containsKey(word);
+        return wordMap.containsKey(word);
     }
 
     private void explore(Iterable<Integer> nodes, List<Integer> hyps, boolean[] marked, Queue<Integer> q) {
@@ -133,8 +140,8 @@ public class WordNet {
     }
 
     private List<Integer> getShortestAncestorInfo(String nounA, String nounB) {
-        List<Integer> nodesA = wordSet.get(nounA);
-        List<Integer> nodesB = wordSet.get(nounB);
+        List<Integer> nodesA = wordMap.get(nounA);
+        List<Integer> nodesB = wordMap.get(nounB);
         if (null == nodesA || null == nodesB) {
             throw new IllegalArgumentException();
         }
