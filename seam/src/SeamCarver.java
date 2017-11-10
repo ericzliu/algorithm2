@@ -1,9 +1,3 @@
-/**
- *  Copyright Murex S.A.S., 2003-2017. All Rights Reserved.
- *
- *  This software program is proprietary and confidential to Murex S.A.S and its affiliates ("Murex") and, without limiting the generality of the foregoing reservation of rights, shall not be accessed, used, reproduced or distributed without the
- *  express prior written consent of Murex and subject to the applicable Murex licensing terms. Any modification or removal of this copyright notice is expressly prohibited.
- */
 import java.awt.Color;
 
 import java.util.ArrayList;
@@ -159,7 +153,7 @@ public class SeamCarver {
             int col = 0;
             for (int x = 0; x < width; x++) {
                 if (x != seam[row]) {
-                    picture.setRGB(col++, row, current.getRGB(col, x));
+                    picture.setRGB(col++, row, current.getRGB(x, row));
                 }
             }
         }
@@ -183,8 +177,8 @@ public class SeamCarver {
         int dxg = cl.getGreen() - cr.getGreen();
         int dxb = cl.getBlue() - cr.getBlue();
         int dyr = cu.getRed() - cd.getRed();
-        int dyg = cl.getGreen() - cd.getGreen();
-        int dyb = cl.getBlue() - cd.getBlue();
+        int dyg = cu.getGreen() - cd.getGreen();
+        int dyb = cu.getBlue() - cd.getBlue();
         int sum = (dxr * dxr) + (dxg * dxg) + (dxb * dxb) + (dyr * dyr) + (dyg * dyg) + (dyb * dyb);
         return Math.sqrt(sum);
     }
@@ -196,6 +190,26 @@ public class SeamCarver {
         for (int col = 0; col < width; col++) {
             for (int row = 0; row < height; row++) {
                 pixels[col][row] = new Pixel((row * width) + col, col, row, energy(picture, col, row));
+            }
+        }
+        for (int col = 0; col < width; col++) {
+            for (int row = 0; row < height; row++) {
+                Pixel pixel = pixels[col][row];
+                if (row + 1 < height) {
+                    if (col - 1 >= 0) {
+                        pixel.setLowerLeft(pixels[col - 1][row + 1]);
+                    }
+                    pixel.setLower(pixels[col][row + 1]);
+                    if (col + 1 < width) {
+                        pixel.setLowerRight(pixels[col + 1][row + 1]);
+                    }
+                }
+                if (col + 1 < width) {
+                    pixel.setRight(pixels[col + 1][row]);
+                    if (row - 1 >= 0) {
+                        pixel.setUpperRight(pixels[col + 1][row - 1]);
+                    }
+                }
             }
         }
         return pixels;
@@ -212,17 +226,18 @@ public class SeamCarver {
         final int width = width();
         EdgeWeightedDigraph digraph = new EdgeWeightedDigraph(width * height);
         final ConnectPixels connectPixels = new ConnectPixels(digraph, direction, pixels);
-        List<Pixel> buffer = Arrays.asList(first);
-        List<Pixel> boundary = buffer;
-        while (!buffer.isEmpty()) {
-            boundary = buffer;
-            buffer = connectPixels.apply(buffer);
+        List<Pixel> layer = Arrays.asList(first);
+        List<Pixel> lastLayer = layer;
+        while (!layer.isEmpty()) {
+            lastLayer = layer;
+            layer = connectPixels.apply(lastLayer);
         }
+
         int dest = -1;
-        AcyclicSP sp = new AcyclicSP(digraph, getNodeId(first));
+        AcyclicSP sp = new AcyclicSP(digraph, first.getId());
         double dist = Double.MAX_VALUE;
-        for (Pixel pixel : boundary) {
-            final int node = getNodeId(pixel);
+        for (Pixel pixel : lastLayer) {
+            final int node = pixel.getId();
             if (sp.hasPathTo(node) && (sp.distTo(node) < dist)) {
                 dist = sp.distTo(node);
                 dest = node;
@@ -237,10 +252,6 @@ public class SeamCarver {
             path.add(pixels[col][row]);
         }
         return new Seam(dist, path);
-    }
-
-    private int getNodeId(Pixel pixel) {
-        return (pixel.getY() * width()) + pixel.getX();
     }
 
     private void assertValidSeam(int[] seam) {
@@ -283,49 +294,61 @@ public class SeamCarver {
         @Override
         public List<Pixel> apply(List<Pixel> fromBuffer) {
             final ArrayList<Pixel> toBuffer = new ArrayList<>();
-            switch (this.direction) {
-
-            case Down:
-                int row = fromBuffer.get(0).getY() + 1;
-                if (row < height()) {
-                    int lo = Math.max(0, fromBuffer.get(0).getX() - 1);
-                    int hi = Math.min(width() - 1, fromBuffer.get(fromBuffer.size() - 1).getX() + 1);
-                    for (int col = lo; col <= hi; col++) {
-                        toBuffer.add(pixels[col][row]);
-                    }
-                    for (Pixel from : fromBuffer) {
-                        safeAddEdge(toBuffer, from, (from.getX() - 1) - lo);
-                        safeAddEdge(toBuffer, from, from.getX() - lo);
-                        safeAddEdge(toBuffer, from, (from.getX() + 1) - lo);
-                    }
+            if (!fromBuffer.isEmpty()) {
+                Pixel first = getFirst(fromBuffer.get(0));
+                if (first != null) {
+                    toBuffer.add(first);
                 }
-                break;
-
-            case Right:
-                int col = fromBuffer.get(0).getX() + 1;
-                if (col < width()) {
-                    int lo = Math.max(0, fromBuffer.get(0).getY() - 1);
-                    int hi = Math.min(height() - 1, fromBuffer.get(fromBuffer.size() - 1).getY() + 1);
-                    for (int r = lo; r <= hi; r++) {
-                        toBuffer.add(pixels[col][r]);
+                for (Pixel pixel : fromBuffer) {
+                    Pixel middle = getMiddle(pixel);
+                    if (middle == null) {
+                        break;
                     }
-                    for (Pixel from : fromBuffer) {
-                        safeAddEdge(toBuffer, from, (from.getY() - 1) - lo);
-                        safeAddEdge(toBuffer, from, from.getY() - lo);
-                        safeAddEdge(toBuffer, from, (from.getY() + 1) - lo);
-                    }
+                    toBuffer.add(middle);
                 }
-                break;
+                Pixel last = getLast(fromBuffer.get(fromBuffer.size() - 1));
+                if (last != null) {
+                    toBuffer.add(last);
+                }
+            }
+            for (Pixel pixel : fromBuffer) {
+                addEdge(pixel, getFirst(pixel));
+                addEdge(pixel, getMiddle(pixel));
+                addEdge(pixel, getLast(pixel));
             }
             return toBuffer;
         }
 
-        private void safeAddEdge(ArrayList<Pixel> buffer, Pixel from, int loc) {
-            if ((loc >= 0) && (loc < buffer.size())) {
-                final Pixel to = buffer.get(loc);
-                digraph.addEdge(new DirectedEdge(from.getId(), to.getId(), to.getEnergy()));
+        private void addEdge(Pixel pixel, Pixel p) {
+            if (p != null) {
+                digraph.addEdge(new DirectedEdge(pixel.getId(), p.getId(), p.getEnergy()));
             }
         }
+
+        private Pixel getFirst(Pixel pixel) {
+            switch (direction) {
+                case Right:
+                    return pixel.getUpperRight();
+                case Down:
+                    return pixel.getLowerLeft();
+            }
+            return null;
+        }
+
+        private Pixel getMiddle(Pixel pixel) {
+            switch (direction) {
+                case Right:
+                    return pixel.getRight();
+                case Down:
+                    return pixel.getLower();
+            }
+            return null;
+        }
+
+        private Pixel getLast(Pixel pixel) {
+            return pixel.getLowerRight();
+        }
+
     }
 
     private static class Pixel {
@@ -333,8 +356,14 @@ public class SeamCarver {
         private int x; // column
         private int y; // row
         private double energy;
+        private Pixel lowerLeft;
+        private Pixel lower;
+        private Pixel lowerRight;
+        private Pixel right;
+        private Pixel upperRight;
 
         Pixel(int id, int x, int y, double energy) {
+            this.id = id;
             this.x = x;
             this.y = y;
             this.energy = energy;
@@ -355,6 +384,47 @@ public class SeamCarver {
         int getX() {
             return x;
         }
+
+        Pixel getLowerLeft() {
+            return lowerLeft;
+        }
+
+        void setLowerLeft(Pixel lowerLeft) {
+            this.lowerLeft = lowerLeft;
+        }
+
+        Pixel getLower() {
+            return lower;
+        }
+
+        void setLower(Pixel lower) {
+            this.lower = lower;
+        }
+
+        Pixel getLowerRight() {
+            return lowerRight;
+        }
+
+        void setLowerRight(Pixel lowerRight) {
+            this.lowerRight = lowerRight;
+        }
+
+        Pixel getRight() {
+            return right;
+        }
+
+        void setRight(Pixel right) {
+            this.right = right;
+        }
+
+        Pixel getUpperRight() {
+            return upperRight;
+        }
+
+        void setUpperRight(Pixel upperRight) {
+            this.upperRight = upperRight;
+        }
+
     }
 
     private static class Seam {
