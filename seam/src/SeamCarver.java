@@ -1,28 +1,53 @@
+/**
+ *  Copyright Murex S.A.S., 2003-2017. All Rights Reserved.
+ *
+ *  This software program is proprietary and confidential to Murex S.A.S and its affiliates ("Murex") and, without limiting the generality of the foregoing reservation of rights, shall not be accessed, used, reproduced or distributed without the
+ *  express prior written consent of Murex and subject to the applicable Murex licensing terms. Any modification or removal of this copyright notice is expressly prohibited.
+ */
+import java.awt.Color;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Function;
+
 import edu.princeton.cs.algs4.AcyclicSP;
 import edu.princeton.cs.algs4.DirectedEdge;
 import edu.princeton.cs.algs4.EdgeWeightedDigraph;
 import edu.princeton.cs.algs4.Picture;
 
-import java.awt.Color;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 
 public class SeamCarver {
-    private Picture origin;
-    private Picture current;
 
-    private void assertNonNull(Object object) {
-        if (null == object) {
-            throw new IllegalArgumentException();
-        }
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Enums
+    //~ ----------------------------------------------------------------------------------------------------------------
+
+    enum Direction {
+        Right, Down
     }
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Instance fields
+    //~ ----------------------------------------------------------------------------------------------------------------
+
+    private Picture current;
+    private Pixel[][] pixels;
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Constructors
+    //~ ----------------------------------------------------------------------------------------------------------------
+
     // create a seam carver object based on the given picture
     public SeamCarver(Picture picture) {
         assertNonNull(picture);
-        this.origin = picture;
         this.current = new Picture(picture);
+        this.pixels = createPixels(picture);
     }
+
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Methods
+    //~ ----------------------------------------------------------------------------------------------------------------
 
     // current picture
     public Picture picture() {
@@ -43,56 +68,80 @@ public class SeamCarver {
     public double energy(int x, int y) {
         guardColumn(x);
         guardRow(y);
-        if (x == 0 || y == 0 || x == this.width() - 1 || y == this.height() - 1) {
-            return 1000;
-        }
-        int l = x - 1;
-        int r = x + 1;
-        Picture pic = picture();
-        Color cl = pic.get(l, y);
-        Color cr = pic.get(r, y);
-        int u = y - 1;
-        int d = y + 1;
-        Color cu = pic.get(x, u);
-        Color cd = pic.get(x, d);
-        int dxr = cl.getRed() - cr.getRed();
-        int dxg = cl.getGreen() - cr.getGreen();
-        int dxb = cl.getBlue() - cr.getBlue();
-        int dyr = cu.getRed() - cd.getRed();
-        int dyg = cl.getGreen() - cd.getGreen();
-        int dyb = cl.getBlue() - cd.getBlue();
-        int sum = dxr * dxr + dxg * dxg + dxb * dxb + dyr * dyr + dyg * dyg + dyb * dyb;
-        return Math.sqrt(sum);
+        return energy(picture(), x, y);
     }
 
     // sequence of indices for horizontal seam
     public int[] findHorizontalSeam() {
-        return null;
+        final int height = height();
+        double dist = Double.MAX_VALUE;
+        Seam seam = null;
+        for (int y = 0; y < height; y++) {
+            Pixel from = pixels[0][y];
+            final Seam tmp = getSeam(from, Direction.Right);
+            if (tmp.dist < dist) {
+                dist = tmp.dist;
+                seam = tmp;
+            }
+        }
+        if (null == seam) {
+            throw new IllegalArgumentException();
+        }
+        return seam.getRowArray();
     }
 
     // sequence of indices for vertical seam
     public int[] findVerticalSeam() {
-        return null;
+        final int width = width();
+        double dist = Double.MAX_VALUE;
+        Seam seam = null;
+        for (int x = 0; x < width; x++) {
+            Pixel from = pixels[x][0];
+            final Seam tmp = getSeam(from, Direction.Down);
+            if (tmp.dist < dist) {
+                dist = tmp.dist;
+                seam = tmp;
+            }
+        }
+        if (null == seam) {
+            throw new IllegalArgumentException();
+        }
+        return seam.getColumnArray();
     }
 
     // remove horizontal seam from current picture
     public void removeHorizontalSeam(int[] seam) {
-        if (height() <= 1) {
+        final int width = width();
+        final int height = height();
+        if (height <= 1) {
             throw new IllegalArgumentException();
         }
         assertNonNull(seam);
         assertValidSeam(seam);
         int length = seam.length;
-        if (length != width()) {
+        if (length != width) {
             throw new IllegalArgumentException();
         }
         for (int i = 0; i < length; i++) {
             guardRow(seam[i]);
         }
+        final Picture picture = new Picture(width, height - 1);
+        for (int col = 0; col < width; col++) {
+            int row = 0;
+            for (int y = 0; y < height; y++) {
+                if (y != seam[col]) {
+                    picture.setRGB(col, row++, current.get(col, y).getRGB());
+                }
+            }
+        }
+        this.current = picture;
+        this.pixels = createPixels(picture);
     }
 
     // remove vertical seam from current picture
     public void removeVerticalSeam(int[] seam) {
+        final int width = width();
+        final int height = height();
         if (width() <= 1) {
             throw new IllegalArgumentException();
         }
@@ -105,70 +154,93 @@ public class SeamCarver {
         for (int i = 0; i < length; i++) {
             guardColumn(seam[i]);
         }
-        for (int x = 0; x < width(); x++) {
+        final Picture picture = new Picture(width - 1, height);
+        for (int row = 0; row < height; row++) {
+            int col = 0;
+            for (int x = 0; x < width; x++) {
+                if (x != seam[row]) {
+                    picture.setRGB(col++, row, current.getRGB(col, x));
+                }
+            }
+        }
+        this.current = picture;
+        this.pixels = createPixels(picture);
+    }
 
+    private static double energy(Picture pic, int x, int y) {
+        if ((x == 0) || (y == 0) || (x == (pic.width() - 1)) || (y == (pic.height() - 1))) {
+            return 1000;
+        }
+        int l = x - 1;
+        int r = x + 1;
+        Color cl = pic.get(l, y);
+        Color cr = pic.get(r, y);
+        int u = y - 1;
+        int d = y + 1;
+        Color cu = pic.get(x, u);
+        Color cd = pic.get(x, d);
+        int dxr = cl.getRed() - cr.getRed();
+        int dxg = cl.getGreen() - cr.getGreen();
+        int dxb = cl.getBlue() - cr.getBlue();
+        int dyr = cu.getRed() - cd.getRed();
+        int dyg = cl.getGreen() - cd.getGreen();
+        int dyb = cl.getBlue() - cd.getBlue();
+        int sum = (dxr * dxr) + (dxg * dxg) + (dxb * dxb) + (dyr * dyr) + (dyg * dyg) + (dyb * dyb);
+        return Math.sqrt(sum);
+    }
+
+    private static Pixel[][] createPixels(Picture picture) {
+        final int width = picture.width();
+        final int height = picture.height();
+        Pixel[][] pixels = new Pixel[width][height];
+        for (int col = 0; col < width; col++) {
+            for (int row = 0; row < height; row++) {
+                pixels[col][row] = new Pixel((row * width) + col, col, row, energy(picture, col, row));
+            }
+        }
+        return pixels;
+    }
+
+    private void assertNonNull(Object object) {
+        if (null == object) {
+            throw new IllegalArgumentException();
         }
     }
 
-    private Seam verticalSeam(int x) {
-        int height = height();
-        int width = width();
-        int id = 0;
-        List<Pt> pts = new ArrayList<>();
-        List<DirectedEdge> edges = new ArrayList<>();
-        HashMap<Integer, Pt> lastLine = new HashMap<>();
-        HashMap<Integer, Pt> line = new HashMap<>();
-        for (int y = 0; y < height; y++) {
-            int lo = Math.max(x - y, 0);
-            int hi = Math.min(x + y, width - 1);
-            line = new HashMap<>();
-            for (int c = lo; c <= hi; c++) {
-                Pt pt = new Pt(id++, c, y);
-                pts.add(pt);
-                line.put(c, pt);
-                double energy = energy(c, y);
-                if (lastLine.containsKey(c - 1)) {
-                    edges.add(new DirectedEdge(lastLine.get(c - 1).id, pt.id, energy));
-                }
-                if (lastLine.containsKey(c)) {
-                    edges.add(new DirectedEdge(lastLine.get(c).id, pt.id, energy));
-                }
-                if (lastLine.containsKey(c + 1)) {
-                    edges.add(new DirectedEdge(lastLine.get(c + 1).id, pt.id, energy));
-                }
-            }
-            lastLine = line;
+    private Seam getSeam(Pixel first, Direction direction) {
+        final int height = height();
+        final int width = width();
+        EdgeWeightedDigraph digraph = new EdgeWeightedDigraph(width * height);
+        final ConnectPixels connectPixels = new ConnectPixels(digraph, direction, pixels);
+        List<Pixel> buffer = Arrays.asList(first);
+        List<Pixel> boundary = buffer;
+        while (!buffer.isEmpty()) {
+            boundary = buffer;
+            buffer = connectPixels.apply(buffer);
         }
-        EdgeWeightedDigraph digraph= new EdgeWeightedDigraph(pts.size());
-        for (DirectedEdge edge: edges) {
-            digraph.addEdge(edge);
-        }
-        double dist = Double.MAX_VALUE;
         int dest = -1;
-        AcyclicSP sp = new AcyclicSP(digraph, 0);
-        for (Pt pt : line.values()) {
-            int ptId = pt.getId();
-            if (sp.hasPathTo(ptId)) {
-                double distTo = sp.distTo(ptId);
-                if (distTo < dist) {
-                    dist = distTo;
-                    dest = ptId;
-                }
+        AcyclicSP sp = new AcyclicSP(digraph, getNodeId(first));
+        double dist = Double.MAX_VALUE;
+        for (Pixel pixel : boundary) {
+            final int node = getNodeId(pixel);
+            if (sp.hasPathTo(node) && (sp.distTo(node) < dist)) {
+                dist = sp.distTo(node);
+                dest = node;
             }
         }
-        if (dest != -1) {
-            int[] seam = new int[height];
-            seam[0] = x;
-            Iterable<DirectedEdge> path = sp.pathTo(dest);
-            int loc = 1;
-            for (DirectedEdge e : path) {
-                int to = e.to();
-                Pt pt = pts.get(to);
-                seam[loc++] = pt.getId();
-            }
-            return new Seam(dist, seam);
+        final Iterable<DirectedEdge> edges = sp.pathTo(dest);
+        final List<Pixel> path = new ArrayList<>();
+        path.add(first);
+        for (DirectedEdge edge : edges) {
+            int row = edge.to() / width;
+            int col = edge.to() % width;
+            path.add(pixels[col][row]);
         }
-        throw new RuntimeException("No shortest path found.");
+        return new Seam(dist, path);
+    }
+
+    private int getNodeId(Pixel pixel) {
+        return (pixel.getY() * width()) + pixel.getX();
     }
 
     private void assertValidSeam(int[] seam) {
@@ -181,56 +253,137 @@ public class SeamCarver {
     }
 
     private void guardColumn(int x) {
-        if (x < 0 || x >= this.width()) {
+        if ((x < 0) || (x >= this.width())) {
             throw new IllegalArgumentException("Column out of range.");
         }
     }
 
     private void guardRow(int y) {
-        if (y < 0 || y >= this.height()) {
+        if ((y < 0) || (y >= this.height())) {
             throw new IllegalArgumentException("Row out of range.");
         }
     }
 
-    private static class Pt {
+    //~ ----------------------------------------------------------------------------------------------------------------
+    //~ Nested Classes
+    //~ ----------------------------------------------------------------------------------------------------------------
+
+    private class ConnectPixels implements Function<List<Pixel>, List<Pixel>> {
+
+        private Direction direction;
+        private EdgeWeightedDigraph digraph;
+        private Pixel[][] pixels;
+
+        ConnectPixels(EdgeWeightedDigraph digraph, Direction direction, Pixel[][] pixels) {
+            this.direction = direction;
+            this.digraph = digraph;
+            this.pixels = pixels;
+        }
+
+        @Override
+        public List<Pixel> apply(List<Pixel> fromBuffer) {
+            final ArrayList<Pixel> toBuffer = new ArrayList<>();
+            switch (this.direction) {
+
+            case Down:
+                int row = fromBuffer.get(0).getY() + 1;
+                if (row < height()) {
+                    int lo = Math.max(0, fromBuffer.get(0).getX() - 1);
+                    int hi = Math.min(width() - 1, fromBuffer.get(fromBuffer.size() - 1).getX() + 1);
+                    for (int col = lo; col <= hi; col++) {
+                        toBuffer.add(pixels[col][row]);
+                    }
+                    for (Pixel from : fromBuffer) {
+                        safeAddEdge(toBuffer, from, (from.getX() - 1) - lo);
+                        safeAddEdge(toBuffer, from, from.getX() - lo);
+                        safeAddEdge(toBuffer, from, (from.getX() + 1) - lo);
+                    }
+                }
+                break;
+
+            case Right:
+                int col = fromBuffer.get(0).getX() + 1;
+                if (col < width()) {
+                    int lo = Math.max(0, fromBuffer.get(0).getY() - 1);
+                    int hi = Math.min(height() - 1, fromBuffer.get(fromBuffer.size() - 1).getY() + 1);
+                    for (int r = lo; r <= hi; r++) {
+                        toBuffer.add(pixels[col][r]);
+                    }
+                    for (Pixel from : fromBuffer) {
+                        safeAddEdge(toBuffer, from, (from.getY() - 1) - lo);
+                        safeAddEdge(toBuffer, from, from.getY() - lo);
+                        safeAddEdge(toBuffer, from, (from.getY() + 1) - lo);
+                    }
+                }
+                break;
+            }
+            return toBuffer;
+        }
+
+        private void safeAddEdge(ArrayList<Pixel> buffer, Pixel from, int loc) {
+            if ((loc >= 0) && (loc < buffer.size())) {
+                final Pixel to = buffer.get(loc);
+                digraph.addEdge(new DirectedEdge(from.getId(), to.getId(), to.getEnergy()));
+            }
+        }
+    }
+
+    private static class Pixel {
         private int id;
         private int x; // column
         private int y; // row
+        private double energy;
 
-        public Pt(int id, int x, int y) {
-            this.id = id;
+        Pixel(int id, int x, int y, double energy) {
             this.x = x;
             this.y = y;
+            this.energy = energy;
         }
 
-        public int getId() {
+        int getId() {
             return id;
         }
 
-        public int getX() {
-            return x;
+        double getEnergy() {
+            return energy;
         }
 
-        public int getY() {
+        int getY() {
             return y;
+        }
+
+        int getX() {
+            return x;
         }
     }
 
     private static class Seam {
         private double dist;
-        private int[] seam;
+        private List<Pixel> nodes;
 
-        public Seam(double dist, int[] seam) {
+        Seam(double dist, List<Pixel> nodes) {
             this.dist = dist;
-            this.seam = seam;
+            this.nodes = nodes;
         }
 
-        public double getDist() {
-            return dist;
+        int[] getColumnArray() {
+            final int length = nodes.size();
+            int[] result = new int[length];
+            for (int i = 0; i < length; i++) {
+                result[i] = nodes.get(i).getX();
+            }
+            return result;
         }
 
-        public int[] getSeam() {
-            return seam;
+        int[] getRowArray() {
+            final int length = nodes.size();
+            int[] result = new int[length];
+            for (int i = 0; i < length; i++) {
+                result[i] = nodes.get(i).getY();
+            }
+            return result;
         }
+
     }
+
 }
