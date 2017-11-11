@@ -1,42 +1,36 @@
 import java.awt.Color;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.function.Function;
 
-import edu.princeton.cs.algs4.AcyclicSP;
 import edu.princeton.cs.algs4.DirectedEdge;
-import edu.princeton.cs.algs4.EdgeWeightedDigraph;
 import edu.princeton.cs.algs4.Picture;
+import edu.princeton.cs.algs4.Stack;
 
 
 public class SeamCarver {
 
-    //~ ----------------------------------------------------------------------------------------------------------------
-    //~ Enums
-    //~ ----------------------------------------------------------------------------------------------------------------
-
-    enum Direction {
+    private enum Direction {
         Right, Down
     }
 
-    //~ ----------------------------------------------------------------------------------------------------------------
-    //~ Instance fields
-    //~ ----------------------------------------------------------------------------------------------------------------
-
-    private Picture current;
-    private Pixel[][] pixels;
-
-    //~ ----------------------------------------------------------------------------------------------------------------
-    //~ Constructors
-    //~ ----------------------------------------------------------------------------------------------------------------
+    private Color[][] colorMatrix;
+    private double[][] energyMatrix;
+    private int width;
+    private int height;
 
     // create a seam carver object based on the given picture
     public SeamCarver(Picture picture) {
         assertNonNull(picture);
-        this.current = new Picture(picture);
-        this.pixels = createPixels(picture);
+        updateInternals(getColorMatrix(picture));
+    }
+
+    private void updateInternals(Color[][] colors) {
+        colorMatrix = colors;
+        energyMatrix = getEnergyMatrix(colors);
+        width = colorMatrix.length;
+        height = colorMatrix[0].length;
     }
 
     //~ ----------------------------------------------------------------------------------------------------------------
@@ -45,34 +39,38 @@ public class SeamCarver {
 
     // current picture
     public Picture picture() {
-        return this.current;
+        Picture picture = new Picture(width, height);
+        for (int c = 0; c < width; c++) {
+            for (int r = 0; r < height; r++) {
+                picture.set(c, r, colorMatrix[c][r]);
+            }
+        }
+        return picture;
     }
 
     // width of current picture
     public int width() {
-        return this.current.width();
+        return width;
     }
 
     // height of current picture
     public int height() {
-        return this.current.height();
+        return height;
     }
 
-    // energy of pixel at column x and row y
+    // getEnergy of pixel at column x and row y
     public double energy(int x, int y) {
         guardColumn(x);
         guardRow(y);
-        return energy(picture(), x, y);
+        return energyMatrix[x][y];
     }
 
     // sequence of indices for horizontal seam
     public int[] findHorizontalSeam() {
-        final int height = height();
         double dist = Double.MAX_VALUE;
         Seam seam = null;
         for (int y = 0; y < height; y++) {
-            Pixel from = pixels[0][y];
-            final Seam tmp = getSeam(from, Direction.Right);
+            final Seam tmp = getSeam(getId(0, y), Direction.Right);
             if (tmp.dist < dist) {
                 dist = tmp.dist;
                 seam = tmp;
@@ -86,12 +84,10 @@ public class SeamCarver {
 
     // sequence of indices for vertical seam
     public int[] findVerticalSeam() {
-        final int width = width();
         double dist = Double.MAX_VALUE;
         Seam seam = null;
         for (int x = 0; x < width; x++) {
-            Pixel from = pixels[x][0];
-            final Seam tmp = getSeam(from, Direction.Down);
+            final Seam tmp = getSeam(getId(x, 0), Direction.Down);
             if (tmp.dist < dist) {
                 dist = tmp.dist;
                 seam = tmp;
@@ -105,8 +101,6 @@ public class SeamCarver {
 
     // remove horizontal seam from current picture
     public void removeHorizontalSeam(int[] seam) {
-        final int width = width();
-        final int height = height();
         if (height <= 1) {
             throw new IllegalArgumentException();
         }
@@ -116,26 +110,23 @@ public class SeamCarver {
         if (length != width) {
             throw new IllegalArgumentException();
         }
-        for (int i = 0; i < length; i++) {
-            guardRow(seam[i]);
+        for (int row : seam) {
+            guardRow(row);
         }
-        final Picture picture = new Picture(width, height - 1);
+        Color[][] pixels = new Color[width][height - 1];
         for (int col = 0; col < width; col++) {
             int row = 0;
             for (int y = 0; y < height; y++) {
                 if (y != seam[col]) {
-                    picture.setRGB(col, row++, current.get(col, y).getRGB());
+                    pixels[col][row++] = colorMatrix[col][y];
                 }
             }
         }
-        this.current = picture;
-        this.pixels = createPixels(picture);
+        updateInternals(pixels);
     }
 
     // remove vertical seam from current picture
     public void removeVerticalSeam(int[] seam) {
-        final int width = width();
-        final int height = height();
         if (width() <= 1) {
             throw new IllegalArgumentException();
         }
@@ -145,34 +136,36 @@ public class SeamCarver {
         if (length != height()) {
             throw new IllegalArgumentException();
         }
-        for (int i = 0; i < length; i++) {
-            guardColumn(seam[i]);
+        for (int col : seam) {
+            guardColumn(col);
         }
-        final Picture picture = new Picture(width - 1, height);
+        Color[][] pixels = new Color[width - 1][height];
         for (int row = 0; row < height; row++) {
             int col = 0;
             for (int x = 0; x < width; x++) {
                 if (x != seam[row]) {
-                    picture.setRGB(col++, row, current.getRGB(x, row));
+                    pixels[col++][row] = colorMatrix[x][row];
                 }
             }
         }
-        this.current = picture;
-        this.pixels = createPixels(picture);
+        updateInternals(pixels);
+
     }
 
-    private static double energy(Picture pic, int x, int y) {
-        if ((x == 0) || (y == 0) || (x == (pic.width() - 1)) || (y == (pic.height() - 1))) {
+    private static double getEnergy(Color[][] pic, int x, int y) {
+        int width = pic.length;
+        int height = pic[0].length;
+        if ((x == 0) || (y == 0) || (x == (width - 1)) || (y == (height - 1))) {
             return 1000;
         }
-        int l = x - 1;
+        int g = x - 1;
         int r = x + 1;
-        Color cl = pic.get(l, y);
-        Color cr = pic.get(r, y);
+        Color cl = pic[g][y];
+        Color cr = pic[r][y];
         int u = y - 1;
         int d = y + 1;
-        Color cu = pic.get(x, u);
-        Color cd = pic.get(x, d);
+        Color cu = pic[x][u];
+        Color cd = pic[x][d];
         int dxr = cl.getRed() - cr.getRed();
         int dxg = cl.getGreen() - cr.getGreen();
         int dxb = cl.getBlue() - cr.getBlue();
@@ -183,36 +176,28 @@ public class SeamCarver {
         return Math.sqrt(sum);
     }
 
-    private static Pixel[][] createPixels(Picture picture) {
+    private static Color[][] getColorMatrix(Picture picture) {
         final int width = picture.width();
         final int height = picture.height();
-        Pixel[][] pixels = new Pixel[width][height];
+        Color[][] colors = new Color[width][height];
         for (int col = 0; col < width; col++) {
             for (int row = 0; row < height; row++) {
-                pixels[col][row] = new Pixel((row * width) + col, col, row, energy(picture, col, row));
+                colors[col][row] = picture.get(col, row);
             }
         }
-        for (int col = 0; col < width; col++) {
-            for (int row = 0; row < height; row++) {
-                Pixel pixel = pixels[col][row];
-                if (row + 1 < height) {
-                    if (col - 1 >= 0) {
-                        pixel.setLowerLeft(pixels[col - 1][row + 1]);
-                    }
-                    pixel.setLower(pixels[col][row + 1]);
-                    if (col + 1 < width) {
-                        pixel.setLowerRight(pixels[col + 1][row + 1]);
-                    }
-                }
-                if (col + 1 < width) {
-                    pixel.setRight(pixels[col + 1][row]);
-                    if (row - 1 >= 0) {
-                        pixel.setUpperRight(pixels[col + 1][row - 1]);
-                    }
-                }
+        return colors;
+    }
+
+    private static double[][] getEnergyMatrix(Color[][] colors) {
+        int width = colors.length;
+        int height = colors[0].length;
+        double[][] matrix = new double[width][height];
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                matrix[x][y] = getEnergy(colors, x, y);
             }
         }
-        return pixels;
+        return matrix;
     }
 
     private void assertNonNull(Object object) {
@@ -221,35 +206,27 @@ public class SeamCarver {
         }
     }
 
-    private Seam getSeam(Pixel first, Direction direction) {
-        final int height = height();
-        final int width = width();
-        EdgeWeightedDigraph digraph = new EdgeWeightedDigraph(width * height);
-        final ConnectPixels connectPixels = new ConnectPixels(digraph, direction, pixels);
-        List<Pixel> layer = Arrays.asList(first);
-        List<Pixel> lastLayer = layer;
+    private Seam getSeam(int first, Direction direction) {
+        final ConnectPixels connect = new ConnectPixels(width, height, direction, first);
+        List<java.lang.Integer> layer = Collections.singletonList(first);
+        List<java.lang.Integer> lastLayer = layer;
         while (!layer.isEmpty()) {
             lastLayer = layer;
-            layer = connectPixels.apply(lastLayer);
+            layer = connect.apply(lastLayer);
         }
-
         int dest = -1;
-        AcyclicSP sp = new AcyclicSP(digraph, first.getId());
         double dist = Double.MAX_VALUE;
-        for (Pixel pixel : lastLayer) {
-            final int node = pixel.getId();
-            if (sp.hasPathTo(node) && (sp.distTo(node) < dist)) {
-                dist = sp.distTo(node);
-                dest = node;
+        for (java.lang.Integer pixel : lastLayer) {
+            if (connect.hasPathTo(pixel) && (connect.distTo(pixel) < dist)) {
+                dist = connect.distTo(pixel);
+                dest = pixel;
             }
         }
-        final Iterable<DirectedEdge> edges = sp.pathTo(dest);
-        final List<Pixel> path = new ArrayList<>();
+        final Iterable<DirectedEdge> edges = connect.pathTo(dest);
+        final List<java.lang.Integer> path = new ArrayList<>();
         path.add(first);
         for (DirectedEdge edge : edges) {
-            int row = edge.to() / width;
-            int col = edge.to() % width;
-            path.add(pixels[col][row]);
+            path.add(edge.to());
         }
         return new Seam(dist, path);
     }
@@ -275,163 +252,151 @@ public class SeamCarver {
         }
     }
 
-    //~ ----------------------------------------------------------------------------------------------------------------
-    //~ Nested Classes
-    //~ ----------------------------------------------------------------------------------------------------------------
-
-    private class ConnectPixels implements Function<List<Pixel>, List<Pixel>> {
+    private class ConnectPixels {
 
         private Direction direction;
-        private EdgeWeightedDigraph digraph;
-        private Pixel[][] pixels;
+        private double[] distTo;
+        private DirectedEdge[] edgeTo;
+        private int width;
+        private int height;
 
-        ConnectPixels(EdgeWeightedDigraph digraph, Direction direction, Pixel[][] pixels) {
+        ConnectPixels(int width, int height, Direction direction, int from) {
+            this.width = width;
+            this.height = height;
             this.direction = direction;
-            this.digraph = digraph;
-            this.pixels = pixels;
+            final int count = width * height;
+            this.distTo = new double[count];
+            this.edgeTo = new DirectedEdge[count];
+            for (int i = 0; i < count; i++) {
+                distTo[i] = Double.MAX_VALUE;
+                edgeTo[i] = null;
+            }
+            distTo[from] = energyMatrix[getX(from)][getY(from)];
         }
 
-        @Override
-        public List<Pixel> apply(List<Pixel> fromBuffer) {
-            final ArrayList<Pixel> toBuffer = new ArrayList<>();
+        boolean hasPathTo(int node) {
+            return this.distTo[node] != Double.MAX_VALUE;
+        }
+
+        double distTo(int node) {
+            return this.distTo[node];
+        }
+
+        Iterable<DirectedEdge> pathTo(int v) {
+            Stack<DirectedEdge> path = new Stack<>();
+            for (DirectedEdge e = edgeTo[v]; e != null; e = edgeTo[e.from()]) {
+                path.push(e);
+            }
+            return path;
+        }
+
+        List<java.lang.Integer> apply(List<java.lang.Integer> fromBuffer) {
+            final ArrayList<java.lang.Integer> toBuffer = new ArrayList<>();
             if (!fromBuffer.isEmpty()) {
-                Pixel first = getFirst(fromBuffer.get(0));
-                if (first != null) {
+                int first = getFirst(fromBuffer.get(0));
+                if (first >= 0) {
                     toBuffer.add(first);
                 }
-                for (Pixel pixel : fromBuffer) {
-                    Pixel middle = getMiddle(pixel);
-                    if (middle == null) {
+                for (java.lang.Integer pixel : fromBuffer) {
+                    int middle = getMiddle(pixel);
+                    if (middle < 0) {
                         break;
                     }
                     toBuffer.add(middle);
                 }
-                Pixel last = getLast(fromBuffer.get(fromBuffer.size() - 1));
-                if (last != null) {
+                java.lang.Integer end = fromBuffer.get(fromBuffer.size() - 1);
+                int last = getLast(end);
+                if (last >= 0) {
                     toBuffer.add(last);
                 }
             }
-            for (Pixel pixel : fromBuffer) {
-                addEdge(pixel, getFirst(pixel));
-                addEdge(pixel, getMiddle(pixel));
-                addEdge(pixel, getLast(pixel));
+            for (java.lang.Integer pixel : fromBuffer) {
+                relax(pixel, getFirst(pixel));
+                relax(pixel, getMiddle(pixel));
+                relax(pixel, getLast(pixel));
             }
             return toBuffer;
         }
 
-        private void addEdge(Pixel pixel, Pixel p) {
-            if (p != null) {
-                digraph.addEdge(new DirectedEdge(pixel.getId(), p.getId(), p.getEnergy()));
+        private void relax(int from, int to) {
+            if (to >= 0) {
+                double energy = energyMatrix[getX(to)][getY(to)];
+                double newDist = distTo[from] + energy;
+                if (newDist < distTo[to]) {
+                    distTo[to] = newDist;
+                    edgeTo[to] = new DirectedEdge(from, to, energy);
+                }
             }
         }
 
-        private Pixel getFirst(Pixel pixel) {
+        private boolean isOutside(int x, int y) {
+            return (x < 0 || x >= width || y < 0 || y >= height);
+        }
+
+        private int getFirst(int id) {
+            int x = getX(id);
+            int y = getY(id);
             switch (direction) {
                 case Right:
-                    return pixel.getUpperRight();
+                    if (!isOutside(x + 1, y - 1)) {
+                        return getId(x + 1, y - 1);
+                    }
+                    break;
                 case Down:
-                    return pixel.getLowerLeft();
+                    if (!isOutside(x - 1, y + 1)) {
+                        return getId(x - 1, y + 1);
+                    }
+                    break;
             }
-            return null;
+            return -1;
         }
 
-        private Pixel getMiddle(Pixel pixel) {
+        private int getMiddle(int id) {
+            int x = getX(id);
+            int y = getY(id);
             switch (direction) {
                 case Right:
-                    return pixel.getRight();
+                    if (!isOutside(x + 1, y)) {
+                        return getId(x + 1, y);
+                    }
+                    break;
                 case Down:
-                    return pixel.getLower();
+                    if (!isOutside(x, y + 1)) {
+                        return getId(x, y + 1);
+                    }
+                    break;
             }
-            return null;
+            return -1;
         }
 
-        private Pixel getLast(Pixel pixel) {
-            return pixel.getLowerRight();
+        private int getLast(int id) {
+            int x = getX(id);
+            int y = getY(id);
+            if (!isOutside(x + 1, y + 1)) {
+                return getId(x + 1, y + 1);
+            }
+            return -1;
         }
-
     }
 
-    private static class Pixel {
-        private int id;
-        private int x; // column
-        private int y; // row
-        private double energy;
-        private Pixel lowerLeft;
-        private Pixel lower;
-        private Pixel lowerRight;
-        private Pixel right;
-        private Pixel upperRight;
 
-        Pixel(int id, int x, int y, double energy) {
-            this.id = id;
-            this.x = x;
-            this.y = y;
-            this.energy = energy;
-        }
-
-        int getId() {
-            return id;
-        }
-
-        double getEnergy() {
-            return energy;
-        }
-
-        int getY() {
-            return y;
-        }
-
-        int getX() {
-            return x;
-        }
-
-        Pixel getLowerLeft() {
-            return lowerLeft;
-        }
-
-        void setLowerLeft(Pixel lowerLeft) {
-            this.lowerLeft = lowerLeft;
-        }
-
-        Pixel getLower() {
-            return lower;
-        }
-
-        void setLower(Pixel lower) {
-            this.lower = lower;
-        }
-
-        Pixel getLowerRight() {
-            return lowerRight;
-        }
-
-        void setLowerRight(Pixel lowerRight) {
-            this.lowerRight = lowerRight;
-        }
-
-        Pixel getRight() {
-            return right;
-        }
-
-        void setRight(Pixel right) {
-            this.right = right;
-        }
-
-        Pixel getUpperRight() {
-            return upperRight;
-        }
-
-        void setUpperRight(Pixel upperRight) {
-            this.upperRight = upperRight;
-        }
-
+    private int getId(int x, int y) {
+        return y * width + x;
     }
 
-    private static class Seam {
+    private int getX(int id) {
+        return id % width;
+    }
+
+    private int getY(int id) {
+        return id / width;
+    }
+
+    private class Seam {
         private double dist;
-        private List<Pixel> nodes;
+        private List<Integer> nodes;
 
-        Seam(double dist, List<Pixel> nodes) {
+        Seam(double dist, List<Integer> nodes) {
             this.dist = dist;
             this.nodes = nodes;
         }
@@ -440,7 +405,7 @@ public class SeamCarver {
             final int length = nodes.size();
             int[] result = new int[length];
             for (int i = 0; i < length; i++) {
-                result[i] = nodes.get(i).getX();
+                result[i] = getX(nodes.get(i));
             }
             return result;
         }
@@ -449,7 +414,7 @@ public class SeamCarver {
             final int length = nodes.size();
             int[] result = new int[length];
             for (int i = 0; i < length; i++) {
-                result[i] = nodes.get(i).getY();
+                result[i] = getY(nodes.get(i));
             }
             return result;
         }
