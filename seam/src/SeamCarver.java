@@ -1,7 +1,4 @@
-import java.awt.Color;
-
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import edu.princeton.cs.algs4.DirectedEdge;
@@ -15,7 +12,7 @@ public class SeamCarver {
         Right, Down
     }
 
-    private Color[][] colorMatrix;
+    private int[][] colorMatrix;
     private double[][] energyMatrix;
     private int width;
     private int height;
@@ -26,7 +23,7 @@ public class SeamCarver {
         updateInternals(getColorMatrix(picture));
     }
 
-    private void updateInternals(Color[][] colors) {
+    private void updateInternals(int[][] colors) {
         colorMatrix = colors;
         energyMatrix = getEnergyMatrix(colors);
         width = colorMatrix.length;
@@ -42,7 +39,7 @@ public class SeamCarver {
         Picture picture = new Picture(width, height);
         for (int c = 0; c < width; c++) {
             for (int r = 0; r < height; r++) {
-                picture.set(c, r, colorMatrix[c][r]);
+                picture.setRGB(c, r, colorMatrix[c][r]);
             }
         }
         return picture;
@@ -69,8 +66,12 @@ public class SeamCarver {
     public int[] findHorizontalSeam() {
         double dist = Double.MAX_VALUE;
         Seam seam = null;
+        int[] dests = new int[height];
+        for (int i = 0; i < height; i++) {
+            dests[i] = getId(width - 1, i);
+        }
         for (int y = 0; y < height; y++) {
-            final Seam tmp = getSeam(getId(0, y), Direction.Right);
+            final Seam tmp = getSeam(getId(0, y), dests, Direction.Right);
             if (tmp.dist < dist) {
                 dist = tmp.dist;
                 seam = tmp;
@@ -86,8 +87,12 @@ public class SeamCarver {
     public int[] findVerticalSeam() {
         double dist = Double.MAX_VALUE;
         Seam seam = null;
+        int[] dests = new int[width];
+        for (int i = 0; i < width; i++) {
+            dests[i] = getId(i, height - 1);
+        }
         for (int x = 0; x < width; x++) {
-            final Seam tmp = getSeam(getId(x, 0), Direction.Down);
+            final Seam tmp = getSeam(getId(x, 0), dests, Direction.Down);
             if (tmp.dist < dist) {
                 dist = tmp.dist;
                 seam = tmp;
@@ -113,7 +118,7 @@ public class SeamCarver {
         for (int row : seam) {
             guardRow(row);
         }
-        Color[][] pixels = new Color[width][height - 1];
+        int[][] pixels = new int[width][height - 1];
         for (int col = 0; col < width; col++) {
             int row = 0;
             for (int y = 0; y < height; y++) {
@@ -139,7 +144,7 @@ public class SeamCarver {
         for (int col : seam) {
             guardColumn(col);
         }
-        Color[][] pixels = new Color[width - 1][height];
+        int[][] pixels = new int[width - 1][height];
         for (int row = 0; row < height; row++) {
             int col = 0;
             for (int x = 0; x < width; x++) {
@@ -152,7 +157,19 @@ public class SeamCarver {
 
     }
 
-    private static double getEnergy(Color[][] pic, int x, int y) {
+    private static int getRed(int color) {
+        return (color >> 16) & 0xFF;
+    }
+
+    private static int getGreen(int color) {
+        return (color >> 8) & 0xFF;
+    }
+
+    private static int getBlue(int color) {
+        return (color >> 0) & 0xFF;
+    }
+
+    private static double getEnergy(int[][] pic, int x, int y) {
         int width = pic.length;
         int height = pic[0].length;
         if ((x == 0) || (y == 0) || (x == (width - 1)) || (y == (height - 1))) {
@@ -160,35 +177,35 @@ public class SeamCarver {
         }
         int g = x - 1;
         int r = x + 1;
-        Color cl = pic[g][y];
-        Color cr = pic[r][y];
+        int cl = pic[g][y];
+        int cr = pic[r][y];
         int u = y - 1;
         int d = y + 1;
-        Color cu = pic[x][u];
-        Color cd = pic[x][d];
-        int dxr = cl.getRed() - cr.getRed();
-        int dxg = cl.getGreen() - cr.getGreen();
-        int dxb = cl.getBlue() - cr.getBlue();
-        int dyr = cu.getRed() - cd.getRed();
-        int dyg = cu.getGreen() - cd.getGreen();
-        int dyb = cu.getBlue() - cd.getBlue();
+        int cu = pic[x][u];
+        int cd = pic[x][d];
+        int dxr = getRed(cl) - getRed(cr);
+        int dxg = getGreen(cl) - getGreen(cr);
+        int dxb = getBlue(cl) - getBlue(cr);
+        int dyr = getRed(cu) - getRed(cd);
+        int dyg = getGreen(cu) - getGreen(cd);
+        int dyb = getBlue(cu) - getBlue(cd);
         int sum = (dxr * dxr) + (dxg * dxg) + (dxb * dxb) + (dyr * dyr) + (dyg * dyg) + (dyb * dyb);
         return Math.sqrt(sum);
     }
 
-    private static Color[][] getColorMatrix(Picture picture) {
+    private static int[][] getColorMatrix(Picture picture) {
         final int width = picture.width();
         final int height = picture.height();
-        Color[][] colors = new Color[width][height];
+        int[][] colors = new int[width][height];
         for (int col = 0; col < width; col++) {
             for (int row = 0; row < height; row++) {
-                colors[col][row] = picture.get(col, row);
+                colors[col][row] = picture.getRGB(col, row);
             }
         }
         return colors;
     }
 
-    private static double[][] getEnergyMatrix(Color[][] colors) {
+    private static double[][] getEnergyMatrix(int[][] colors) {
         int width = colors.length;
         int height = colors[0].length;
         double[][] matrix = new double[width][height];
@@ -206,17 +223,11 @@ public class SeamCarver {
         }
     }
 
-    private Seam getSeam(int first, Direction direction) {
+    private Seam getSeam(int first, int[] dests, Direction direction) {
         final ConnectPixels connect = new ConnectPixels(width, height, direction, first);
-        List<java.lang.Integer> layer = Collections.singletonList(first);
-        List<java.lang.Integer> lastLayer = layer;
-        while (!layer.isEmpty()) {
-            lastLayer = layer;
-            layer = connect.apply(lastLayer);
-        }
         int dest = -1;
         double dist = Double.MAX_VALUE;
-        for (java.lang.Integer pixel : lastLayer) {
+        for (int pixel : dests) {
             if (connect.hasPathTo(pixel) && (connect.distTo(pixel) < dist)) {
                 dist = connect.distTo(pixel);
                 dest = pixel;
@@ -272,6 +283,33 @@ public class SeamCarver {
                 edgeTo[i] = null;
             }
             distTo[from] = energyMatrix[getX(from)][getY(from)];
+            if (direction == Direction.Down) {
+                int lo = getX(from);
+                int hi = getX(from);
+                for (int row = 0; row < height; row++) {
+                    for (int col = lo; col <= hi; col++) {
+                        int id = getId(col, row);
+                        relax(id, getFirst(id));
+                        relax(id, getMiddle(id));
+                        relax(id, getLast(id));
+                    }
+                    lo = Math.max(0, lo - 1);
+                    hi = Math.min(hi + 1, width - 1);
+                }
+            } else {
+                int lo = getY(from);
+                int hi = getY(from);
+                for (int col = 0; col < width; col++) {
+                    for (int row = lo; row <= hi; row++) {
+                        int id = getId(col, row);
+                        relax(id, getFirst(id));
+                        relax(id, getMiddle(id));
+                        relax(id, getLast(id));
+                    }
+                    lo = Math.max(0, lo - 1);
+                    hi = Math.min(hi + 1, height - 1);
+                }
+            }
         }
 
         boolean hasPathTo(int node) {
@@ -288,34 +326,6 @@ public class SeamCarver {
                 path.push(e);
             }
             return path;
-        }
-
-        List<java.lang.Integer> apply(List<java.lang.Integer> fromBuffer) {
-            final ArrayList<java.lang.Integer> toBuffer = new ArrayList<>();
-            if (!fromBuffer.isEmpty()) {
-                int first = getFirst(fromBuffer.get(0));
-                if (first >= 0) {
-                    toBuffer.add(first);
-                }
-                for (java.lang.Integer pixel : fromBuffer) {
-                    int middle = getMiddle(pixel);
-                    if (middle < 0) {
-                        break;
-                    }
-                    toBuffer.add(middle);
-                }
-                java.lang.Integer end = fromBuffer.get(fromBuffer.size() - 1);
-                int last = getLast(end);
-                if (last >= 0) {
-                    toBuffer.add(last);
-                }
-            }
-            for (java.lang.Integer pixel : fromBuffer) {
-                relax(pixel, getFirst(pixel));
-                relax(pixel, getMiddle(pixel));
-                relax(pixel, getLast(pixel));
-            }
-            return toBuffer;
         }
 
         private void relax(int from, int to) {
