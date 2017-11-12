@@ -64,43 +64,13 @@ public class SeamCarver {
 
     // sequence of indices for horizontal seam
     public int[] findHorizontalSeam() {
-        double dist = Double.MAX_VALUE;
-        Seam seam = null;
-        int[] dests = new int[height];
-        for (int i = 0; i < height; i++) {
-            dests[i] = getId(width - 1, i);
-        }
-        for (int y = 0; y < height; y++) {
-            final Seam tmp = getSeam(getId(0, y), dests, Direction.Right);
-            if (tmp.dist < dist) {
-                dist = tmp.dist;
-                seam = tmp;
-            }
-        }
-        if (null == seam) {
-            throw new IllegalArgumentException();
-        }
+        Seam seam = getSeam(Direction.Right);
         return seam.getRowArray();
     }
 
     // sequence of indices for vertical seam
     public int[] findVerticalSeam() {
-        double dist = Double.MAX_VALUE;
-        Seam seam = null;
-        int[] dests = new int[width];
-        for (int i = 0; i < width; i++) {
-            dests[i] = getId(i, height - 1);
-        }
-        for (int x = 0; x < width; x++) {
-            final Seam tmp = getSeam(getId(x, 0), dests, Direction.Down);
-            if (tmp.dist < dist) {
-                dist = tmp.dist;
-                seam = tmp;
-            }
-        }
-        if (null == seam) {
-            throw new IllegalArgumentException();
-        }
+        Seam seam = getSeam(Direction.Down);
         return seam.getColumnArray();
     }
 
@@ -223,8 +193,22 @@ public class SeamCarver {
         }
     }
 
-    private Seam getSeam(int first, int[] dests, Direction direction) {
-        final ConnectPixels connect = new ConnectPixels(width, height, direction, first);
+    private Seam getSeam(Direction direction) {
+        int[] dests;
+        if (direction == Direction.Right) {
+            dests = new int[height];
+            for (int i = 0; i < height; i++) {
+                dests[i] = getId(width - 1, i);
+            }
+        }
+        else {
+            dests = new int[width];
+            for (int i = 0; i < width; i++) {
+                dests[i] = getId(i, height - 1);
+            }
+        }
+
+        final ConnectPixels connect = new ConnectPixels(width, height, direction);
         int dest = -1;
         double dist = Double.MAX_VALUE;
         for (int pixel : dests) {
@@ -235,9 +219,8 @@ public class SeamCarver {
         }
         final Iterable<DirectedEdge> edges = connect.pathTo(dest);
         final List<java.lang.Integer> path = new ArrayList<>();
-        path.add(first);
         for (DirectedEdge edge : edges) {
-            path.add(edge.to());
+            path.add(edge.to() - 1);
         }
         return new Seam(dist, path);
     }
@@ -271,58 +254,59 @@ public class SeamCarver {
         private int width;
         private int height;
 
-        ConnectPixels(int width, int height, Direction direction, int from) {
+        ConnectPixels(int width, int height, Direction direction) {
             this.width = width;
             this.height = height;
             this.direction = direction;
-            final int count = width * height;
+            final int count = width * height + 1;
             this.distTo = new double[count];
             this.edgeTo = new DirectedEdge[count];
             for (int i = 0; i < count; i++) {
                 distTo[i] = Double.MAX_VALUE;
                 edgeTo[i] = null;
             }
-            distTo[from] = energyMatrix[getX(from)][getY(from)];
+            distTo[0] = 0;
             if (direction == Direction.Down) {
-                int lo = getX(from);
-                int hi = getX(from);
+                for (int col = 0; col < width; col++) {
+                    int id = getId(col, 0);
+                    relax(-1, id);
+                }
                 for (int row = 0; row < height; row++) {
-                    for (int col = lo; col <= hi; col++) {
+                    for (int col = 0; col < width; col++) {
                         int id = getId(col, row);
                         relax(id, getFirst(id));
                         relax(id, getMiddle(id));
                         relax(id, getLast(id));
                     }
-                    lo = Math.max(0, lo - 1);
-                    hi = Math.min(hi + 1, width - 1);
                 }
             } else {
-                int lo = getY(from);
-                int hi = getY(from);
+                for (int row = 0; row < height; row++) {
+                    int id = getId(0, row);
+                    relax(-1, id);
+                }
+
                 for (int col = 0; col < width; col++) {
-                    for (int row = lo; row <= hi; row++) {
+                    for (int row = 0; row < height; row++) {
                         int id = getId(col, row);
                         relax(id, getFirst(id));
                         relax(id, getMiddle(id));
                         relax(id, getLast(id));
                     }
-                    lo = Math.max(0, lo - 1);
-                    hi = Math.min(hi + 1, height - 1);
                 }
             }
         }
 
         boolean hasPathTo(int node) {
-            return this.distTo[node] != Double.MAX_VALUE;
+            return this.distTo[node + 1] != Double.MAX_VALUE;
         }
 
         double distTo(int node) {
-            return this.distTo[node];
+            return this.distTo[node + 1];
         }
 
         Iterable<DirectedEdge> pathTo(int v) {
             Stack<DirectedEdge> path = new Stack<>();
-            for (DirectedEdge e = edgeTo[v]; e != null; e = edgeTo[e.from()]) {
+            for (DirectedEdge e = edgeTo[v + 1]; e != null; e = edgeTo[e.from()]) {
                 path.push(e);
             }
             return path;
@@ -331,10 +315,10 @@ public class SeamCarver {
         private void relax(int from, int to) {
             if (to >= 0) {
                 double energy = energyMatrix[getX(to)][getY(to)];
-                double newDist = distTo[from] + energy;
-                if (newDist < distTo[to]) {
-                    distTo[to] = newDist;
-                    edgeTo[to] = new DirectedEdge(from, to, energy);
+                double newDist = distTo[from + 1] + energy;
+                if (newDist < distTo[to + 1]) {
+                    distTo[to + 1] = newDist;
+                    edgeTo[to + 1] = new DirectedEdge(from + 1, to + 1, energy);
                 }
             }
         }
